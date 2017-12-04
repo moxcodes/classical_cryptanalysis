@@ -1,0 +1,75 @@
+With the inclusion of a bi-word dictionary assembled from a large corpus, the algorithm is going to become noticibly more complex.
+
+We will assume that the wikipedia corpus only gives access to the set of simple(most common) words which may follow other very common words,
+ so this necessitates a differentiation of three dictionaries: a simple dictionary, a full dictionary, and a bi-simple-word dictionary.
+
+The recursive algorithm will now benefit from a larger set of objects passed to it, to the extent of using a structure to store it all.
+
+We need a 1) position in the simple dictionary x2 (if applicable) 2) position in full dictionary x2 3) position of the start and end of previous word x2
+
+
+now, if we are still in the simple dictionary (indicated by a non-null simple dictionary object), when a word ends we must check the bi-word combination of
+  the previous two words (should they exist and both be simple).
+
+If a simple word ends and prev_start and prev_end are equal, move prev_end to the current position
+
+If a simple word ends and prev_start and prev_end are different, check the word pair and update both
+
+If a non-simple word ends, move both prev_start and prev_end to the current position
+
+
+All of the above must be stored separately for the key and code strings
+
+
+The three untraversed dictionaries may be kept as global objects
+
+
+--Tree object types--
+These should be designed with inheritance. The first three should be the same data type, but the fourth should have a different entreeing function.
+
+
+-Simple word tree   :: contains all high-frequency words in english, with frequencies `since start of word'
+-Advanced word tree :: contains all reasonable words in english, with frequencies `since start of word'
+-Simple biword tree :: contains all pairs of high-frequency words in english, with frequences `since start of biword'
+-ngraph tree        :: contains english biwords with dense counts (full set of substrings encoded)
+
+
+
+##ngraph tree design##
+
+There are two types of this that are useful - one will have only frequencies given a known start of word position - this is what we'll use for running key, but it's probably worth designing the possibility of generating `dense' ngraph trees. The dense ngraph will be more useful for the substitution type application.
+
+
+
+### ngraph, bigram frequency analysis ###
+
+Because this brute-force searching generates just a ton of useless crap, we want to direct the search a little. The running key version will provide the strongest version of this, because both the key and the plaintext will need to be english.
+
+Simple substitution will use frequency analysis in a somewhat different way - the best way to deal with the substitution will be to generate a new frequency tree and try to perform a matching between the two - using some distance function (perhaps even some iterative greedy algorithm - similar to what one does by hand would suffice).
+
+For running key, we'll need to do two things at every step - compute a probability estimate for the next step (normalized to avoid having either huge or tiny floats), then compare to a threshold before stepping. This probably means the normalization should put the maximum probability returned at 1.
+
+Probability of next step = ((probability that this is the nth character of an english word) * (key probability that this is the mth character of an english word)) * probability that existing string of words is good
+
+Once a word is finished, we need to adjust the estimates
+for first word - probability is just the probability of finding that word
+for second word - probability is the probability of finding those two words
+
+we won't compute nword probabilities - too unreliable and data heavy, we'll just assume that:
+p(third word| first word && second word) = p(third word)
+
+p(1 & 2 & 3) = p(1) * p(2|1) * p(3|2&1)
+             = p(1) * p(2 & 1)/p(1) * p(3|2&1)
+	     ~ p(2&1) * p(3|2)
+	     = p(2&1) * p(3&2)/p(2)
+
+(effectively, assume that words sufficiently far apart are independent vars.) Let's check that this works recursively:
+
+p(1&2&..&n) = p(1) * p(2|1) * p(3|2&1) * .. * p(n|1&..&n-1)
+	    = p(1&2) * p(3|2) * p(4|3) * .. * p(n| n-1)
+	    = p(1&2) * p(2&3) * .. * p(n-1 & n) /( p(2)*..p(n-1))
+
+Great! So, on the first word, we need to throw in the probability of the first word being english, for the second word we need to replace that with p(1&2) - really, for the first pair, we can just directly track the numbers given in the tree.
+
+Once we start the third word (end a bigram tree), we'll need to change things up a little - the probability is now given by the first equation above. So, we'll need a running word proability that tracks the biwords/middle words probability. Prior to the completion of word 3, the event `3' then represents the probability of the ngraph of the word.
+
